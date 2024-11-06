@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Environment variables
+.env
+.streamlit/
+
+# Database
+*.db
+maktab_finance.db
+
+# OS files
+.DS_Store
