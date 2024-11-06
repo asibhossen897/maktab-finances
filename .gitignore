@@ -7,11 +7,12 @@ venv/
 
 # Environment variables
 .env
-.streamlit/
+.streamlit/secrets.toml
 
-# Database
+# Local development
 *.db
-maktab_finance.db
+data/*.db
+!data/.gitkeep
 
 # OS files
 .DS_Store
