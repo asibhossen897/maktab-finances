@@ -71,25 +71,29 @@ def format_currency(value):
     return f"৳{value:,.2f}"
 
 def style_dataframe(df):
-    # Rename columns to more readable names
+    # Rename columns to more readable names using translations
     column_map = {
-        'donor_name': 'Donor Name',
-        'teacher_name': 'Teacher Name',
-        'description': 'Description',
-        'amount': 'Amount',
-        'date': 'Date',
-        'notes': 'Notes',
-        'category': 'Category'
+        'donor_name': get_text('column_donor_name', st.session_state.language),
+        'display_name': get_text('column_display_name', st.session_state.language),
+        'teacher_name': get_text('column_teacher_name', st.session_state.language),
+        'description': get_text('column_description', st.session_state.language),
+        'amount': get_text('column_amount', st.session_state.language),
+        'date': get_text('column_date', st.session_state.language),
+        'notes': get_text('column_notes', st.session_state.language),
+        'category': get_text('column_category', st.session_state.language),
+        'is_anonymous': get_text('column_is_anonymous', st.session_state.language)
     }
     df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
     
     # Format date
-    if 'Date' in df.columns:
-        df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%d %B, %Y')
+    date_column = get_text('column_date', st.session_state.language)
+    if date_column in df.columns:
+        df[date_column] = pd.to_datetime(df[date_column]).dt.strftime('%d %B, %Y')
     
     # Format amount
-    if 'Amount' in df.columns:
-        df['Amount'] = df['Amount'].apply(format_currency)
+    amount_column = get_text('column_amount', st.session_state.language)
+    if amount_column in df.columns:
+        df[amount_column] = df[amount_column].apply(format_currency)
     
     return df
 
@@ -218,7 +222,19 @@ def show_dashboard():
         st.subheader(get_text('recent_donations', st.session_state.language))
         if donations:
             df_donations = pd.DataFrame(donations)
-            display_df = style_dataframe(df_donations[['donor_name', 'amount', 'date', 'notes']])
+            
+            # Modify display for donations based on user type and anonymous status
+            if check_admin_auth():
+                # Admins see all donor names
+                display_df = style_dataframe(df_donations[['donor_name', 'amount', 'date', 'notes']])
+            else:
+                # Regular users see anonymous names only for anonymous donations
+                df_donations['display_name'] = df_donations.apply(
+                    lambda x: get_text('anonymous_donor', st.session_state.language) if x['is_anonymous'] 
+                    else x['donor_name'], axis=1
+                )
+                display_df = style_dataframe(df_donations[['display_name', 'amount', 'date', 'notes']])
+            
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
             st.info(get_text('no_donations', st.session_state.language))
@@ -291,58 +307,63 @@ def show_donations():
             amount = st.number_input("Amount (৳)", min_value=0.0)
             date = st.date_input("Date")
             notes = st.text_area("Notes")
+            is_anonymous = st.checkbox(get_text('anonymous_donation', st.session_state.language))
             
             if st.form_submit_button("Add Donation"):
-                add_donation(donor_name, amount, date, notes)
+                add_donation(donor_name, amount, date, notes, is_anonymous)
                 st.success("Donation added successfully!")
+                st.rerun()
     
-    # Display donations table with improved formatting
+    # Display donations table
     donations = get_all_donations()
     if donations:
         df = pd.DataFrame(donations)
-        if not check_admin_auth():
-            # For regular users, show beautifully formatted table
-            display_df = style_dataframe(df[['donor_name', 'amount', 'date', 'notes']])
-            
-            # Add custom CSS for table styling
-            st.markdown("""
-                <style>
-                .dataframe {
-                    font-size: 1.1rem;
-                    text-align: left;
-                }
-                .dataframe th {
-                    background-color: #2ecc71;
-                    color: white;
-                    padding: 12px;
-                }
-                .dataframe td {
-                    padding: 12px;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-            
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                hide_index=True,
+        
+        # Show edit/delete options for admin
+        if check_admin_auth():
+            st.subheader("Edit Donations")
+            for index, row in df.iterrows():
+                with st.expander(f"Donation: {row['donor_name']} - ৳{row['amount']:,.2f} ({row['date']})"):
+                    with st.form(f"edit_donation_{row['id']}"):
+                        new_donor = st.text_input("Donor Name", row['donor_name'])
+                        new_amount = st.number_input("Amount (৳)", value=float(row['amount']), min_value=0.0)
+                        new_date = st.date_input("Date", pd.to_datetime(row['date']))
+                        new_notes = st.text_area("Notes", row['notes'] if row['notes'] else "")
+                        new_anonymous = st.checkbox("Anonymous", value=row['is_anonymous'])
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.form_submit_button("Update"):
+                                update_donation(row['id'], new_donor, new_amount, new_date, new_notes, new_anonymous)
+                                st.success("Updated successfully!")
+                                st.rerun()
+                        with col2:
+                            if st.form_submit_button("Delete", type="secondary"):
+                                delete_donation(row['id'])
+                                st.success("Deleted successfully!")
+                                st.rerun()
+        
+        # Display table for all users
+        st.subheader("All Donations")
+        if check_admin_auth():
+            display_columns = ['donor_name', 'amount', 'date', 'notes', 'is_anonymous']
+        else:
+            df['display_name'] = df.apply(
+                lambda x: get_text('anonymous_donor', st.session_state.language) if x['is_anonymous'] 
+                else x['donor_name'], axis=1
             )
-            
-            # Add summary statistics
-            st.markdown("---")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Total Donations", format_currency(df['amount'].sum()))
-            with col2:
-                st.metric("Number of Donors", len(df['donor_name'].unique()))
+            display_columns = ['display_name', 'amount', 'date', 'notes']
+        
+        display_df = style_dataframe(df[display_columns])
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 def show_expenses():
-    st.header(get_text('expense_management', st.session_state.language))
+    st.header(get_text('expenses', st.session_state.language))
     
     if check_admin_auth():
         with st.form("expense_form"):
             st.subheader(get_text('add_new_expense', st.session_state.language))
-            description = st.text_input(get_text('description', st.session_state.language))
+            description = st.text_input("Description")
             amount = st.number_input("Amount (৳)", min_value=0.0)
             date = st.date_input("Date")
             category = st.selectbox("Category", ["Utilities", "Supplies", "Maintenance", "Other"])
@@ -350,30 +371,41 @@ def show_expenses():
             if st.form_submit_button("Add Expense"):
                 add_expense(description, amount, date, category)
                 st.success("Expense added successfully!")
+                st.rerun()
     
     expenses = get_all_expenses()
     if expenses:
         df = pd.DataFrame(expenses)
-        if not check_admin_auth():
-            display_df = style_dataframe(df[['description', 'amount', 'date', 'category']])
-            
-            # Add category-wise summary
-            st.markdown("### Expense Summary by Category")
-            category_summary = df.groupby('category')['amount'].sum().reset_index()
-            category_summary['amount'] = category_summary['amount'].apply(format_currency)
-            
-            # Display category summary in columns
-            cols = st.columns(len(category_summary))
-            for idx, (cat, amount) in enumerate(zip(category_summary['category'], category_summary['amount'])):
-                with cols[idx]:
-                    st.metric(cat, amount)
-            
-            st.markdown("### Expense Details")
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                hide_index=True,
-            )
+        
+        # Show edit/delete options for admin
+        if check_admin_auth():
+            st.subheader("Edit Expenses")
+            for index, row in df.iterrows():
+                with st.expander(f"Expense: {row['description']} - ৳{row['amount']:,.2f} ({row['date']})"):
+                    with st.form(f"edit_expense_{row['id']}"):
+                        new_desc = st.text_input("Description", row['description'])
+                        new_amount = st.number_input("Amount (৳)", value=float(row['amount']), min_value=0.0)
+                        new_date = st.date_input("Date", pd.to_datetime(row['date']))
+                        new_category = st.selectbox("Category", 
+                                                  ["Utilities", "Supplies", "Maintenance", "Other"],
+                                                  index=["Utilities", "Supplies", "Maintenance", "Other"].index(row['category']))
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.form_submit_button("Update"):
+                                update_expense(row['id'], new_desc, new_amount, new_date, new_category)
+                                st.success("Updated successfully!")
+                                st.rerun()
+                        with col2:
+                            if st.form_submit_button("Delete", type="secondary"):
+                                delete_expense(row['id'])
+                                st.success("Deleted successfully!")
+                                st.rerun()
+        
+        # Display table for all users
+        st.subheader("All Expenses")
+        display_df = style_dataframe(df[['description', 'amount', 'date', 'category']])
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 def show_teacher_salaries():
     st.header(get_text('teacher_salaries', st.session_state.language))
@@ -388,30 +420,38 @@ def show_teacher_salaries():
             if st.form_submit_button("Add Salary Payment"):
                 add_salary(teacher_name, amount, date)
                 st.success("Salary payment added successfully!")
+                st.rerun()
     
     salaries = get_teacher_salaries()
     if salaries:
         df = pd.DataFrame(salaries)
-        if not check_admin_auth():
-            display_df = style_dataframe(df[['teacher_name', 'amount', 'date']])
-            
-            # Add teacher-wise summary
-            st.markdown("### Salary Summary by Teacher")
-            teacher_summary = df.groupby('teacher_name')['amount'].sum().reset_index()
-            teacher_summary['amount'] = teacher_summary['amount'].apply(format_currency)
-            
-            # Display summary in a grid
-            cols = st.columns(min(3, len(teacher_summary)))
-            for idx, (teacher, amount) in enumerate(zip(teacher_summary['teacher_name'], teacher_summary['amount'])):
-                with cols[idx % 3]:
-                    st.metric(teacher, amount)
-            
-            st.markdown("### Salary Payment Details")
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                hide_index=True,
-            )
+        
+        # Show edit/delete options for admin
+        if check_admin_auth():
+            st.subheader("Edit Salary Payments")
+            for index, row in df.iterrows():
+                with st.expander(f"Salary: {row['teacher_name']} - ৳{row['amount']:,.2f} ({row['date']})"):
+                    with st.form(f"edit_salary_{row['id']}"):
+                        new_teacher = st.text_input("Teacher Name", row['teacher_name'])
+                        new_amount = st.number_input("Amount (৳)", value=float(row['amount']), min_value=0.0)
+                        new_date = st.date_input("Date", pd.to_datetime(row['date']))
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.form_submit_button("Update"):
+                                update_salary(row['id'], new_teacher, new_amount, new_date)
+                                st.success("Updated successfully!")
+                                st.rerun()
+                        with col2:
+                            if st.form_submit_button("Delete", type="secondary"):
+                                delete_salary(row['id'])
+                                st.success("Deleted successfully!")
+                                st.rerun()
+        
+        # Display table for all users
+        st.subheader("All Salary Payments")
+        display_df = style_dataframe(df[['teacher_name', 'amount', 'date']])
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 if __name__ == "__main__":
     main() 

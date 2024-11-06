@@ -23,24 +23,19 @@ def init_db():
     conn = get_db_connection()
     c = conn.cursor()
     
-    # Drop existing tables if they exist
-    c.execute('DROP TABLE IF EXISTS admin_users')
-    c.execute('DROP TABLE IF EXISTS donations')
-    c.execute('DROP TABLE IF EXISTS expenses')
-    c.execute('DROP TABLE IF EXISTS salaries')
-    
-    # Create donations table
+    # Create donations table if not exists
     c.execute('''
         CREATE TABLE IF NOT EXISTS donations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             donor_name TEXT NOT NULL,
             amount REAL NOT NULL,
             date DATE NOT NULL,
-            notes TEXT
+            notes TEXT,
+            is_anonymous BOOLEAN DEFAULT FALSE
         )
     ''')
     
-    # Create expenses table
+    # Create expenses table if not exists
     c.execute('''
         CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +46,7 @@ def init_db():
         )
     ''')
     
-    # Create salaries table
+    # Create salaries table if not exists
     c.execute('''
         CREATE TABLE IF NOT EXISTS salaries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,7 +56,7 @@ def init_db():
         )
     ''')
     
-    # Create admin users table with password_hash
+    # Create admin users table if not exists
     c.execute('''
         CREATE TABLE IF NOT EXISTS admin_users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,13 +83,13 @@ def init_db():
     conn.commit()
     conn.close()
 
-def add_donation(donor_name, amount, date, notes):
+def add_donation(donor_name, amount, date, notes, is_anonymous=False):
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('''
-        INSERT INTO donations (donor_name, amount, date, notes)
-        VALUES (?, ?, ?, ?)
-    ''', (donor_name, amount, date, notes))
+        INSERT INTO donations (donor_name, amount, date, notes, is_anonymous)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (donor_name, amount, date, notes, is_anonymous))
     conn.commit()
     conn.close()
 
@@ -163,14 +158,14 @@ def change_admin_password(username, old_password, new_password):
         return True
     return False
 
-def update_donation(id, donor_name, amount, date, notes):
+def update_donation(id, donor_name, amount, date, notes, is_anonymous):
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('''
         UPDATE donations 
-        SET donor_name = ?, amount = ?, date = ?, notes = ?
+        SET donor_name = ?, amount = ?, date = ?, notes = ?, is_anonymous = ?
         WHERE id = ?
-    ''', (donor_name, amount, date, notes, id))
+    ''', (donor_name, amount, date, notes, is_anonymous, id))
     conn.commit()
     conn.close()
 
