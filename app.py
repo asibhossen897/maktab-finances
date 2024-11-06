@@ -199,20 +199,20 @@ def show_dashboard():
     with col3:
         st.metric(get_text('total_salaries', st.session_state.language), format_currency(total_salaries))
     
-    # Monthly trends chart
-    st.subheader(get_text('monthly_trends', st.session_state.language))
-    if donations:  # Only show chart if there are donations
-        df_donations = pd.DataFrame(donations)
-        df_donations['date'] = pd.to_datetime(df_donations['date'])
-        monthly_donations = df_donations.groupby(df_donations['date'].dt.strftime('%Y-%m'))[['amount']].sum()
-        fig = px.line(monthly_donations, 
-                     title="Monthly Donations",
-                     labels={'value': 'Amount (৳)', 'index': 'Month'},
-                     template="plotly_white")
-        fig.update_traces(line_color="#2ecc71", line_width=3)
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info(get_text('no_donations_data', st.session_state.language))
+    # Monthly trends chart - Commented out
+    # st.subheader(get_text('monthly_trends', st.session_state.language))
+    # if donations:  # Only show chart if there are donations
+    #     df_donations = pd.DataFrame(donations)
+    #     df_donations['date'] = pd.to_datetime(df_donations['date'])
+    #     monthly_donations = df_donations.groupby(df_donations['date'].dt.strftime('%Y-%m'))[['amount']].sum()
+    #     fig = px.line(monthly_donations, 
+    #                  title="Monthly Donations",
+    #                  labels={'value': 'Amount (৳)', 'index': 'Month'},
+    #                  template="plotly_white")
+    #     fig.update_traces(line_color="#2ecc71", line_width=3)
+    #     st.plotly_chart(fig, use_container_width=True)
+    # else:
+    #     st.info(get_text('no_donations_data', st.session_state.language))
     
     # Display all data tables
     col1, col2 = st.columns(2)
