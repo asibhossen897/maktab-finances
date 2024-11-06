@@ -18,12 +18,34 @@ from database import (
     delete_salary,
     change_admin_password
 )
+from translations import get_text
 
 st.set_page_config(
     page_title="Maktab Financial Dashboard",
     page_icon="🕌",
     layout="wide"
 )
+
+def initialize_session_state():
+    if 'language' not in st.session_state:
+        st.session_state.language = 'bn'
+
+def language_selector():
+    languages = {
+        'বাংলা': 'bn',
+        'English': 'en'
+    }
+    current_lang_name = [k for k, v in languages.items() if v == st.session_state.language][0]
+    
+    with st.sidebar:
+        selected_lang = st.selectbox(
+            "🌐 ভাষা/Language",
+            options=list(languages.keys()),
+            index=list(languages.keys()).index(current_lang_name)
+        )
+        if languages[selected_lang] != st.session_state.language:
+            st.session_state.language = languages[selected_lang]
+            st.rerun()
 
 def check_admin_auth():
     if 'is_admin' not in st.session_state:
@@ -95,18 +117,21 @@ def show_admin_settings():
                     st.error("Current password is incorrect!")
 
 def main():
-    st.title("Maktab Financial Management System")
+    initialize_session_state()
+    language_selector()
+    
+    st.title(get_text('title', st.session_state.language))
     
     # Add login/logout in sidebar
     with st.sidebar:
         if check_admin_auth():
-            if st.button("Logout"):
+            if st.button(get_text('logout', st.session_state.language)):
                 st.session_state.is_admin = False
                 st.rerun()
-            st.success("Logged in as Admin")
+            st.success(get_text('logged_in', st.session_state.language))
         else:
-            st.warning("View-only mode. Login for admin access.")
-            if st.button("Admin Login"):
+            st.warning(get_text('view_only', st.session_state.language))
+            if st.button(get_text('admin_login', st.session_state.language)):
                 st.session_state.current_page = "login"
                 st.rerun()
     
@@ -138,8 +163,9 @@ def main():
         show_teacher_salaries()
 
 def show_dashboard():
-    st.header("Financial Overview")
+    st.header(get_text('financial_overview', st.session_state.language))
     
+    # Summary cards
     col1, col2, col3 = st.columns(3)
     
     # Summary statistics
@@ -147,9 +173,9 @@ def show_dashboard():
     expenses = get_all_expenses()
     salaries = get_teacher_salaries()
     
-    total_donations = sum(d['amount'] for d in donations)
-    total_expenses = sum(e['amount'] for e in expenses)
-    total_salaries = sum(s['amount'] for s in salaries)
+    total_donations = sum(d['amount'] for d in donations) if donations else 0
+    total_expenses = sum(e['amount'] for e in expenses) if expenses else 0
+    total_salaries = sum(s['amount'] for s in salaries) if salaries else 0
     
     # Add metric styling
     metric_style = """
@@ -163,16 +189,16 @@ def show_dashboard():
     st.markdown(metric_style, unsafe_allow_html=True)
     
     with col1:
-        st.metric("Total Donations", format_currency(total_donations))
+        st.metric(get_text('total_donations', st.session_state.language), format_currency(total_donations))
     with col2:
-        st.metric("Total Expenses", format_currency(total_expenses))
+        st.metric(get_text('total_expenses', st.session_state.language), format_currency(total_expenses))
     with col3:
-        st.metric("Total Salaries", format_currency(total_salaries))
+        st.metric(get_text('total_salaries', st.session_state.language), format_currency(total_salaries))
     
-    # Monthly trends chart with improved styling
-    st.subheader("Monthly Financial Trends")
-    df_donations = pd.DataFrame(donations)
-    if not df_donations.empty:
+    # Monthly trends chart
+    st.subheader(get_text('monthly_trends', st.session_state.language))
+    if donations:  # Only show chart if there are donations
+        df_donations = pd.DataFrame(donations)
         df_donations['date'] = pd.to_datetime(df_donations['date'])
         monthly_donations = df_donations.groupby(df_donations['date'].dt.strftime('%Y-%m'))[['amount']].sum()
         fig = px.line(monthly_donations, 
@@ -181,15 +207,87 @@ def show_dashboard():
                      template="plotly_white")
         fig.update_traces(line_color="#2ecc71", line_width=3)
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info(get_text('no_donations_data', st.session_state.language))
+    
+    # Display all data tables
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Recent Donations
+        st.subheader(get_text('recent_donations', st.session_state.language))
+        if donations:
+            df_donations = pd.DataFrame(donations)
+            display_df = style_dataframe(df_donations[['donor_name', 'amount', 'date', 'notes']])
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+        else:
+            st.info(get_text('no_donations', st.session_state.language))
+        
+        # Teacher Salaries
+        st.subheader(get_text('teacher_salaries', st.session_state.language))
+        if salaries:
+            df_salaries = pd.DataFrame(salaries)
+            display_df = style_dataframe(df_salaries[['teacher_name', 'amount', 'date']])
+            
+            # Teacher-wise summary
+            teacher_summary = df_salaries.groupby('teacher_name')['amount'].sum().reset_index()
+            teacher_summary['amount'] = teacher_summary['amount'].apply(format_currency)
+            
+            # Display summary
+            for teacher, amount in zip(teacher_summary['teacher_name'], teacher_summary['amount']):
+                st.metric(f"Total for {teacher}", amount)
+            
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+        else:
+            st.info(get_text('no_salaries', st.session_state.language))
+    
+    with col2:
+        # Recent Expenses
+        st.subheader(get_text('expenses', st.session_state.language))
+        if expenses:
+            df_expenses = pd.DataFrame(expenses)
+            display_df = style_dataframe(df_expenses[['description', 'amount', 'date', 'category']])
+            
+            # Category-wise summary
+            category_summary = df_expenses.groupby('category')['amount'].sum().reset_index()
+            category_summary['amount'] = category_summary['amount'].apply(format_currency)
+            
+            # Display category summary
+            for cat, amount in zip(category_summary['category'], category_summary['amount']):
+                st.metric(f"Total {cat}", amount)
+            
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+        else:
+            st.info(get_text('no_expenses', st.session_state.language))
+    
+    # Add some spacing
+    st.markdown("---")
+    
+    # Additional Statistics
+    st.subheader(get_text('quick_stats', st.session_state.language))
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        num_donors = len(pd.DataFrame(donations)['donor_name'].unique()) if donations else 0
+        st.metric(get_text('num_donors', st.session_state.language), num_donors)
+    with col2:
+        num_teachers = len(pd.DataFrame(salaries)['teacher_name'].unique()) if salaries else 0
+        st.metric(get_text('num_teachers', st.session_state.language), num_teachers)
+    with col3:
+        expense_categories = len(pd.DataFrame(expenses)['category'].unique()) if expenses else 0
+        st.metric(get_text('expense_cats', st.session_state.language), expense_categories)
+    with col4:
+        current_balance = total_donations - (total_expenses + total_salaries)
+        st.metric(get_text('current_balance', st.session_state.language), format_currency(current_balance))
 
 def show_donations():
-    st.header("Donations Management")
+    st.header(get_text('donations', st.session_state.language))
     
     # Only show the donation form to admin users
     if check_admin_auth():
         with st.form("donation_form"):
-            st.subheader("Add New Donation")
-            donor_name = st.text_input("Donor Name")
+            st.subheader(get_text('add_donation', st.session_state.language))
+            donor_name = st.text_input(get_text('donor_name', st.session_state.language))
             amount = st.number_input("Amount (৳)", min_value=0.0)
             date = st.date_input("Date")
             notes = st.text_area("Notes")
@@ -239,12 +337,12 @@ def show_donations():
                 st.metric("Number of Donors", len(df['donor_name'].unique()))
 
 def show_expenses():
-    st.header("Expenses Management")
+    st.header(get_text('expense_management', st.session_state.language))
     
     if check_admin_auth():
         with st.form("expense_form"):
-            st.subheader("Add New Expense")
-            description = st.text_input("Description")
+            st.subheader(get_text('add_new_expense', st.session_state.language))
+            description = st.text_input(get_text('description', st.session_state.language))
             amount = st.number_input("Amount (৳)", min_value=0.0)
             date = st.date_input("Date")
             category = st.selectbox("Category", ["Utilities", "Supplies", "Maintenance", "Other"])
@@ -278,7 +376,7 @@ def show_expenses():
             )
 
 def show_teacher_salaries():
-    st.header("Teacher Salaries")
+    st.header(get_text('teacher_salaries', st.session_state.language))
     
     if check_admin_auth():
         with st.form("salary_form"):
