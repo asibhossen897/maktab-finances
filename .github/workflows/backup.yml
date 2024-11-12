@@ -1,39 +1,51 @@
 name: Supabase Backup
 
 on:
-  schedule:
-    - cron: "0 18 * * *"  # Every day at 6 PM UTC (12 AM BDT)
-  workflow_dispatch:  # Allows manual triggering of the workflow
+  # schedule:
+  #     - cron: "0 18 * * *"  # Every day at 6 PM UTC (12 AM BDT)
+  # workflow_dispatch:  # Allows manual triggering of the workflow
 
+  push:
+    branches:
+      - main
 jobs:
   backup:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - name: Set up Go
+        uses: actions/setup-go@v4
         with:
-          node-version: "18"  # Ensure the correct Node.js version
+          go-version: "1.21"
 
       - name: Install Supabase CLI
-        run: npm install -g supabase
+        run: |
+          go install github.com/supabase/cli@latest
+          sudo ln -s "$(go env GOPATH)/bin/cli" /usr/local/bin/supabase || true
 
       - name: Login to Supabase
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_TOKEN }}
-        run: echo $SUPABASE_ACCESS_TOKEN | supabase login --token
+        run: |
+          supabase login --token "$SUPABASE_ACCESS_TOKEN"
 
       - name: Create a Database Backup
+        if: success()
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
           BACKUP_FILE="supabase_backup_$TIMESTAMP.sql"
-          supabase db dump --out $BACKUP_FILE
+          supabase db dump --db-url "$DB_URL" -f "$BACKUP_FILE"
 
       - name: Upload Backup as an Artifact
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: supabase_backup
           path: supabase_backup_*.sql
+          retention-days: 30
